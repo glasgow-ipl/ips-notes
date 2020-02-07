@@ -1,0 +1,800 @@
+\documentclass[10pt,twocolumn,a4paper]{article}
+\usepackage[l2tabu,orthodox]{nag}
+\usepackage[utf8x]{inputenc}
+\usepackage[british]{babel}
+\usepackage[babel=true]{microtype}
+\usepackage{amsmath}
+\usepackage[all]{onlyamsmath}
+\usepackage{newtxtext}
+\usepackage{newtxmath}
+\usepackage{upquote}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage[caption=false]{subfig}
+\usepackage{booktabs}
+\usepackage{bytefield}
+\usepackage{listings}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{color}
+\usepackage[cm]{fullpage}
+\usepackage{no-par-indent}
+\usepackage{alltt}
+\lstset{basicstyle=\footnotesize\ttfamily,breaklines=true}
+\frenchspacing
+\newcommand{\todo}[1]{\textit{\textcolor{red}{[To do: #1]}}}
+\newcommand{\code}[1]{\texttt{#1}}
+
+%==================================================================================================
+\begin{document}
+\title{The Glasgow Packet Language: Type System and Execution Model}
+\author{
+  Stephen McQuistin\\University of Glasgow
+\and
+  Vivian Band\\University of Glasgow
+\and
+  Colin Perkins\\University of Glasgow
+}
+\date{\today}
+\maketitle
+%==================================================================================================
+\begin{abstract}
+
+  This memo defines the intermediate representation used in the
+  implementation of the Glasgow Packet Language. It also describes
+  the execution model used to parse protocols described in that
+  language.
+
+\end{abstract}
+%==================================================================================================
+\section{Introduction}
+
+% Paragraph 1: Motivation. At a high level, what is the problem area you
+% are working in and why is it important? It is important to set the larger
+% context here. Why is the problem of interest and importance to the larger
+% community?
+
+
+
+% Paragraph 2: What is the specific problem considered in this paper? This
+% paragraph narrows down the topic area of the paper. In the first
+% paragraph you have established general context and importance. Here you
+% establish specific context and background.
+
+In order to generate a parser for a protocol, it's necessary to describe
+the format of protocol data units (PDUs).
+These can be described by a set of types that represent the objects to be
+parsed, along with constraints on the parsed values.
+If there are multiple ways of describing these types, it's necessary to
+have a common \emph{intermediate representation} into which all those input
+formats can be converted, and from which parsers can be generated.
+
+% Paragraph 3: "In this paper, we show that...". This is the key paragraph
+% in the introduction - you summarize, in one paragraph, what are the main
+% contributions of your paper, given the context established in paragraphs
+% 1 and 2. What's the general approach taken? Why are the specific results
+% significant? The story is not what you did, but rather:
+%  - what you show, new ideas, new insights
+%  - why interesting, important?
+% State your contributions: these drive the entire paper.  Contributions
+% should be refutable claims, not vague generic statements.
+
+We describe such an intermediate representation in this memo.
+It specifies a set of internal types used by the parsers, and constructors
+for representable types that describe the PDUs to be parsed.
+The execution model of the parsers is also described.
+
+% Paragraph 4: What are the differences between your work, and what others
+% have done? Keep this at a high level, as you can refer to future sections
+% where specific details and differences will be given, but it is important
+% for the reader to know what is new about this work compared to other work
+% in the area.
+
+
+
+% Paragraph 5: "We structure the remainder of this paper as follows." Give
+% the reader a road-map for the rest of the paper. Try to avoid redundant
+% phrasing, "In Section 2, In section 3, ..., In Section 4, ... ", etc.
+
+
+%==================================================================================================
+\section{Terminology}
+
+The key words ``MUST'', ``MUST NOT'', ``REQUIRED'', ``SHALL'', ``SHALL
+NOT'', ``SHOULD'', ``SHOULD NOT'', ``RECOMMENDED'', ``NOT RECOMMENDED'',
+``MAY'', and ``OPTIONAL'' in this document are to be interpreted as
+described in \cite{RFC2119,RFC8174} when, and only when, they appear
+in all capitals, as shown here.
+
+\emph{Runtime} refers to software that supports the type system that this
+document describes. The runtime instantiates a set of primitive types, provides
+functions for the construction of other types, and synthesises the primitive and
+constructed types into a state that is suitable for the generation of parser or
+serialisation code.
+
+\emph{Implementation} refers to code that is generated, with support from the
+runtime, to parse or serialise the objects that the type system describes.
+
+%==================================================================================================
+\section{Type System}
+
+Types can be \emph{internal} or \emph{representable}. An internal type is an
+artefact of the runtime, and cannot be parsed or serialised. A representable
+type describes something that can be parsed or serialised.
+
+The runtime provides a set of \emph{type constructors} that can be used to
+create different kinds of type, and instantiates a set of primitive types.
+
+Each type has a \emph{kind}, a \emph{name}, and a \emph{value}.
+A type implements one or more \emph{traits}.
+Traits define \emph{methods} that can operate on instances of that type.
+
+A type name is formed of upper- and lower-case ASCII letters, digits, and
+dollar signs (\code{A-Za-z0-9\$}). It must begin with an upper case letter
+(\code{A-Z}). It is an error to define two types with the same name.
+
+%--------------------------------------------------------------------------------------------------
+\subsection{Traits}
+\label{sec:traits}
+
+A \emph{trait} defines a named collection of methods. A type may implement
+one or more traits. A type that implements a trait gains an implementation
+of each of the trait's methods.
+
+A trait definition specifies the name of the trait and defines the methods
+it provides.
+
+A trait name is comprised of upper and lower case ASCII letters, digits, or
+dollar signs (\code{A-Za-z0-9\$}).  It MUST begin with an upper case letter
+(\code{A-Z}). Trait names occupy a different namespace to type names.
+
+A method definition specifies its name, parameters, and return type. Methods
+take one or more parameters. Each parameter has a name and a type. The first
+parameter of a method MUST have the name \code{self} and MUST have the type
+parameterised as \code{Self}. Type parameter \code{Self} refers to the type
+that implements the trait. Other parameters, if any, MUST have names that are
+unique within the method definition.
+
+Types used in method definitions MAY be concrete types (i.e., types
+specified when the trait is defined) or type parameters. Concrete types for
+any type parameters MUST be provided when a type that implements the trait
+is constructed.
+
+Method names and parameter names are formed of upper and lower case ASCII
+letters, digits, dollar signs, or underscores (\code{A-Za-z0-9\$\_}). They
+MUST begin with a lower case letter (\code{a-z}).
+It is an error to define two methods that have the same name within a given
+trait.
+
+When a method is called on an instance of a type that implements a trait,
+that instance will be passed as the first parameter of the method.
+
+It is not possible for further traits to be defined beyond those defined by the
+runtime.
+
+The runtime defines the following traits:
+\begin{itemize}
+  \item The \code{Value} trait defines the following two methods that can
+    be used to get and set the value of an instance of a type:
+    \begin{itemize}
+      \item \texttt{get(self: Self) $\rightarrow$ Self}
+      \item \texttt{set(self: Self, value: Self) $\rightarrow$ Nothing}
+    \end{itemize}
+    The syntax \emph{name(parameters) $\rightarrow$ return\_type} is used to
+    describe a method. The parameters are a list of \emph{name: type}
+    pairs. \code{Nothing} is a primitive representable type defined in
+    Section~\ref{sec:representable-primitive}.
+
+  \item The \code{Sized} trait defines a method that can be used to get the
+    size, in bits, of an instance of a type:
+    \begin{itemize}
+      \item \texttt{size(self: Self) $\rightarrow$ Number}
+    \end{itemize}
+    \code{Number} is a primitive internal type defined in
+    Section~\ref{sec:internal-primitive}.
+    All representable types MUST implement the \code{Sized} trait.
+    \code{size} MAY return an expression (Section~\ref{sec:expressions}) that
+    evaluates to a \code{Number}.
+
+  \item The \code{IndexCollection} trait defines methods that can be used
+    to get and set the values of elements of an array-like data structure,
+    which has multiple, numerically indexed elements:
+    \begin{itemize}
+      \item \texttt{get(self: Self, index: Number) $\rightarrow$ \emph{T}}
+      \item \texttt{set(self: Self, index: Number,\\\hspace*{0.75cm}value: \emph{T}) $\rightarrow$ Nothing}
+    \end{itemize}
+    Type parameter \texttt{\emph{T}} MUST NOT be \code{Self} and MUST NOT be
+    \code{Nothing}. The type parameterised by \texttt{\emph{T}} MUST be
+    specified when the trait is implemented.
+
+  \item The \code{Equality} trait defines methods that can be used to
+    compare to instances of a type for equality:
+    \begin{itemize}
+      \item \texttt{eq(self: Self, other: Self) $\rightarrow$ Boolean}
+      \item \texttt{ne(self: Self, other: Self) $\rightarrow$ Boolean}
+    \end{itemize}
+    \code{Boolean} is a primitive internal type defined in
+    Section~\ref{sec:internal-primitive}.
+
+  \item The \code{Ordinal} trait defines methods that can be used to
+    compare the values of instances of a type:
+    \begin{itemize}
+      \item \texttt{lt(self: Self, other: Self) $\rightarrow$ Boolean}
+      \item \texttt{le(self: Self, other: Self) $\rightarrow$ Boolean}
+      \item \texttt{gt(self: Self, other: Self) $\rightarrow$ Boolean}
+      \item \texttt{ge(self: Self, other: Self) $\rightarrow$ Boolean}
+    \end{itemize}
+
+  \item The \code{BooleanOps} trait defines methods that can be used to
+    perform boolean operations on, and between, instances of a type:
+    \begin{itemize}
+      \item \texttt{and(self: Self, other: Self) $\rightarrow$ Boolean}
+      \item \texttt{ or(self: Self, other: Self) $\rightarrow$ Boolean}
+      \item \texttt{not(self: Self) $\rightarrow$ Boolean}
+    \end{itemize}
+
+  \item The \code{ArithmeticOps} trait defines methods that can be used to
+    perform arithmetic operations on instances of a type:
+    \begin{itemize}
+      \item \texttt{plus(self: Self, other: Self) $\rightarrow$ Self}
+      \item \texttt{minus(self: Self, other: Self) $\rightarrow$ Self}
+      \item \texttt{multiply(self: Self, other: Self)\\\hspace*{0.5cm}$\rightarrow$ Self}
+      \item \texttt{divide(self: Self, other: Self) $\rightarrow$ Self}
+      \item \texttt{modulo(self: Self, other: Self) $\rightarrow$ Self}
+    \end{itemize}
+
+  \item The \code{NumberRepresentable} trait defines a method that can be
+    used to represent a type as an \code{Number} type:
+    \begin{itemize}
+      \item \texttt{to\_number(self: Self) $\rightarrow$ Number}
+    \end{itemize}
+
+  \item The \code{TypeEquality} trait defines a method that can be used to
+    determine if two type instances are of the same type:
+    \begin{itemize}
+      \item \texttt{is\_type(self: Self, other: \emph{T})\\\hspace*{0.5cm}$\rightarrow$ Boolean}
+    \end{itemize}
+    where \code{is\_type} returns \code{true} if \code{Self} and \code{\emph{T}}
+    are the same type, and \code{false} otherwise.
+\end{itemize}
+
+%--------------------------------------------------------------------------------------------------
+\subsection{Internal types}
+
+The runtime defines two primitive internal types (\code{Boolean} and
+\code{Number}) and type constructors for three kinds of internal type
+(\code{Function}, \code{Protocol}, and \code{Context}).
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Primitive type}
+\label{sec:internal-primitive}
+
+The runtime defines two primitive internal types:
+
+\begin{itemize}
+  \item The \code{Boolean} type is a boolean value, either \code{true} or
+    \code{false}.  It implements the traits \code{Value}, \code{Equality}
+    (two \code{Boolean}s are equal if they have the same value), and
+    \code{BooleanOps}.
+
+  \item The \code{Number} type is a positive integral value. It implements the
+    traits \code{Value}, \code{Equality}, \code{Ordinal}, and
+    \code{ArithmeticOps}. The size of the \code{Number} type is implementation defined.
+\end{itemize}
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Functions}
+\label{sec:functions}
+
+A \code{Function} type can be constructed to represent
+the signature of a function to be provided by the implementation of
+the protocol. The code comprising the body of the function is not captured by
+the intermediate representation.
+
+The \code{Function} type constructor is parameterised by the \emph{name} of
+the function, the list of \emph{parameters} that the function takes (each
+with its own name and type), and the function's \emph{return type}.
+The return type \code{Nothing} is used for functions that return no value.
+
+Function names and parameter names are formed of upper and lower case ASCII
+letters, digits, dollar signs, or underscores (\code{A-Za-z0-9\$\_}), and
+MUST begin with a lower case letter (\code{a-z}).
+Function names are defined in the global type namespace.
+Each parameter within a function definition MUST have a unique name.
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{The Parsing Context}
+\label{sec:context}
+
+A \code{Context} type
+represents a sequence of fields, possibly of different types, that can be
+accessed in the parsing of other types, where needed.
+
+The \code{Context}
+constructor is parameterised by the details of the \emph{fields} it includes.
+
+The \code{Context} holds internal state for the parser, and does not
+represent a PDU, or any part of a PDU, of the protocol being parsed.
+The \code{Context} is defined along with the other \emph{type definitions}
+in a \code{Protocol} (defined in Section~\ref{sec:protocol}), however, since it
+is specific to a protocol.
+
+Each field has a name that is formed of upper and lower case ASCII letters,
+digits, dollar signs, or underscores (\code{A-Za-z0-9\$\_}). The field name
+MUST begin with a lower case letter (\code{a-z}). Field names must be unique
+within the \code{Context}.
+
+Each field has a type. That type MUST be a previously defined representable
+type (primitive representable types and type constructors for representable
+types are defined in Section~\ref{sec:representable}).
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Protocols}
+\label{sec:protocol}
+
+A \code{Protocol} type can be constructed to represent
+the types and protocol data units (PDUs) that form a protocol.
+
+The \code{Protocol} type constructor is parameterised by the \emph{name} of the
+protocol, a set of \emph{type definitions} for types used by the protocol parser,
+and the list of type names of \emph{PDUs} used in the protocol.
+
+Any type constructor for a representable type (defined in
+Section~\ref{sec:representable}) or a function type MAY be included in the set
+of type definitions. In addition, the set MUST include one context type
+constructor. This context MUST include a field named ``\code{data\_size}'' with
+the type \code{Number}. As described in Section~\ref{sec:parser-model}, the
+implementation will set this field to the size of the current data unit being
+parsed or serialised.
+
+The list of PDU type names MAY be empty, although this represents a
+protocol that is useless. PDU type names can be type names of any representable
+type whose constructor is part of the set of type definitions of the protocol.
+
+%--------------------------------------------------------------------------------------------------
+\subsection{Representable types}
+\label{sec:representable}
+
+The runtime specifies two primitive representable types (\code{Nothing} and
+\code{DataUnit}). In addition, the runtime provides type
+constructors for \code{BitString}, \code{Option}, \code{Array}, \code{Struct},
+and \code{Enum} types. Finally, a mechanism by which new types can be derived
+from existing representable types is also defined.
+
+The base representable type is a \code{DataUnit} (defined in
+Section~\ref{sec:representable-primitive}). All data for parsing or
+serialisation is initially represented within the language as a \code{DataUnit}.
+
+\code{BitString} and \code{Option} types cannot be initialised from another
+type. All other representable types MUST be associated with a single initialisation
+function, with the following signature:
+
+\begin{center}
+  \texttt{init(from: \emph{T}) $\rightarrow$ Option<Self>}
+\end{center}
+
+where \code{\emph{T}} is any previously defined representable type and MUST NOT
+be \code{Nothing}, and \code{Self} refers to the type that is being instantiated.
+A type's \code{init} function constructs and initialises an instance of that
+type, from an instance of the type \code{\emph{T}}. These functions exist within
+the namespace for all functions, as described in Section~\ref{sec:functions}.
+
+If \code{\emph{T}} is \textbf{not} a BitString type, then a \code{init} function
+MUST be specified when the \code{Self} type is being constructed. Otherwise, and
+if an initialisation function is not specified,
+an initialisation function will be generated by the runtime, with
+\code{\emph{T}} as a BitString type constructed by the runtime, whose length is
+appropriate for the type \code{Self}.
+
+There are two properties that follow from these constraints on \code{init}
+functions. Firstly, given that runtime defines only one non-\code{Nothing} type
+(\code{DataUnit}), it is always possible to construct a chain from a
+\code{DataUnit} (the base type) to any other representable type via a series of
+\code{init} functions. Secondly, given that each type has only a single
+initialisation function, only one such chain of \code{init} functions exists for
+a given representable type. This allows for the unambiguous parsing of incoming
+data.
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Primitive types}
+\label{sec:representable-primitive}
+
+The runtime defines two primitive representable types:
+
+\begin{itemize}
+  \item The \code{Nothing} type is the empty type. It implements the
+    \code{Sized} trait and has size 0.
+
+  \item The \code{DataUnit} type is the base type. All data for parsing or
+    serialisation is initially represented within the language as this type.
+    It is constructed as a \code{BitString} type that has size equal to the
+    ``\emph{data\_size}'' \code{Context} field.
+\end{itemize}
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Bit Strings}
+\label{sec:bit-string}
+
+Representable types of kind \code{BitString} can be constructed to
+represent multi-bit values that can be parsed or serialised.
+
+The \code{BitString} type constructor takes as parameters the \emph{name}
+of the new bit string type and a \emph{size} in bits. The size may be
+set to \code{Nothing}.
+
+Instances of \code{BitString} types implement the \code{Sized} trait. The
+\code{size()} method of \code{BitString} types returns \emph{size}, if
+\emph{size} is a \code{Number} or an expression that evaluates to a
+\code{Number}. If \emph{size} is \code{Nothing}, then the return value of
+\code{size()} is inferred by the runtime (see
+Section~\ref{sec:runtime-size-inference}).
+
+Instances of \code{BitString} types also implement the \code{Value},
+\code{Equality}, and \code{NumberRepresentable} traits.
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Options}
+\label{sec:option-type}
+
+Representable types of kind \code{Option} can be constructed to represent
+optional types that are either the \code{Nothing} type \emph{or} another
+representable type.
+
+The \code{Option} type constructor takes as parameters the \emph{name} of the
+new type and another \emph{reference type}. The \code{Option} type is either
+\code{Nothing} or the reference type.
+
+Instances of the \code{Option} type implement the \code{TypeEquality} trait.
+\code{is\_type(\emph{T})} returns \code{true} if the Option is the type
+\code{\emph{T}}, and returns \code{false} otherwise.
+
+Instances of \code{Option} types implement the \code{Sized} trait. \code{size()}
+returns an \code{IfElse} expression, where the condition is
+\code{This.is\_type(\emph{reference type})}, the \emph{if true} expression is
+the size of the reference type, and the \emph{if false} expression is the size
+of the \code{Nothing} type.
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Arrays}
+
+Representable types of kind \code{Array} can be constructed to represent
+a sequence of elements that can be parsed or serialised.
+
+The \code{Array} type constructor takes as parameters the \emph{name} of
+the new array type, the \emph{element type}, the \emph{length} of the
+new array, and an \emph{init} function, as described above.
+The element type must be a previously defined representable type.
+The length is the number of elements contained in the array.
+The length may be \code{Nothing}.
+
+Type parameter \code{Self} in the \code{init} function of an \code{Array} refers
+to the new type with name \emph{name}.
+
+Instances of the \code{Array} type implement the \code{Sized} trait. The size of
+the array is equal to the \emph{length} of the array multiplied by the
+\code{size()} of the element type. If \emph{length} is \code{Nothing}, then the
+\code{size()} of the array will be inferred by the runtime (see
+Section~\ref{sec:runtime-size-inference}).
+
+Instances of \code{Array} types also implement the \code{Equality},
+and \code{IndexCollection} traits.
+Two arrays are equal if they have the same element type and length, and
+their elements are equal.
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Structure Types}
+
+Representable types of kind \code{Struct} can be constructed to represent
+a sequence of fields, with possibly different types, that can be parsed
+and serialised.
+
+The \code{Struct} type constructor takes as parameters the \emph{name} of
+the new structure type, a list of \emph{fields}, a possibly empty list of
+\emph{constraints} on those fields, a possibly empty list of
+\emph{actions} that are to be carried out once the structure has been
+parsed, and an \code{init} function, as described above.
+
+Type parameter \code{Self} in the \code{init} function of a \code{Struct} refers
+to the new type with name \emph{name}.
+
+\emph{Fields} are constructed with a \emph{name} for the field, the
+\emph{type} of the field, and an expression indicating if the field
+\emph{is present} in a particular instantiation of the structure type.
+Structure types MUST contain at least one field.
+
+Field names are formed of upper and lower case ASCII letters,
+digits, dollar signs, or underscores (\code{A-Za-z0-9\$\_}). The field name
+MUST begin with a lower case letter (\code{a-z}).
+
+Field types MUST have been previously defined.
+Fields can be of \code{BitString}, array, structure type, or enumerated type,
+or a type derived from such a type. The names of each field MUST be unique
+within a structure definition, but several fields can have the same type.
+
+Each field has an \emph{is present} expression that indicates
+whether that field is present in a particular instantiation of the
+structure type. This is used to model data formats that contain optional
+fields. Expressions are described in Section \ref{sec:expressions}. The
+\emph{is present} expression MUST evaluate to a \code{Boolean} value.
+
+A structure type implements the \code{Sized} trait. The size of a structure is
+inferred by the runtime.
+
+A structure type also implements the \code{Equality} trait. Two structures
+are equal if they are the same type, and the
+corresponding fields are equal. Two fields are equal if they have the same
+\emph{name}, the same \emph{type}, and the same \emph{is present} expression
+that evaluates to the same value.
+
+A structure type is parameterised by a set of constraints (i.e., boolean
+expressions that MUST evaluate to \code{True}) on the
+fields. The set of constraints MAY be empty. Expressions are described in
+Section \ref{sec:expressions}.
+
+Finally, on the successful parsing of the structure type, the list of \emph{actions} is
+evaluated. The list of actions MAY be empty.  The expressions in the list of actions MUST
+be tree expressions, and each expression MUST return \code{Nothing}. Actions are typically
+expected to update the parsing context (see Section~\ref{sec:context}).
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Enumerated Types}
+\label{sec:enum-type}
+
+Representable types of kind \code{Enum} can be constructed to represent
+data that can exist as one of several possible variants when parsed or
+serialised.
+
+The \code{Enum} type constructor takes as parameters the \emph{name} of the
+new \code{Enum} type, an ordered list of the types of the \emph{variants} that
+the \code{Enum} might take, and an \emph{init} function, as described above.
+
+Type parameter \code{Self} in the \code{init} function of an \code{Enum} refers
+to the new type with name \emph{name}.
+
+Variant types MUST have been
+previously defined, and the variants list MUST NOT be empty. Variants of
+an enumerated type have their own types, but are otherwise unnamed.
+Variants can be of \code{BitString}, array, structure type, or enumerated type, or
+a subtype of such a type.
+
+The \code{Enum} will take the type of the first variant type that the data can be
+successfully parsed or serialised as. Parsing or serialisation will be attempted for each
+variant type in turn until successful, or until the list of variant types has been
+exhausted.
+
+An enumerated type implements the \code{TypeEquality} trait.
+\code{is\_type(\emph{T})} returns \code{true} if the enumerated type's variant
+is of type \code{\emph{T}}, and returns \code{false} otherwise.
+
+An enumerated type implements the \code{Sized} trait.  \code{size()}
+returns an \code{IfElse} expression, where the condition is
+\code{This.is\_type(\emph{variant})}, the \emph{if true} expression is
+the size of the \emph{variant} type, and the \emph{if false} expression is
+either a further \code{IfElse} expression conditional upon the next variant in
+the list of variants (if there are two or more remaining variants), or the
+\code{size()} of the final variant in the list.
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Derived Types}
+
+The type system includes shorthand for the creation of new types from other
+types. A derived type has the same representation
+and traits as the type it is derived from, but has a new name and is
+distinct from the original type. It MAY also implement additional traits.
+
+The type constructor of a derived type is parameterised by the \emph{name} of
+the new type, the \emph{type} that it is derived from, a (possibly empty) list
+of additional \emph{traits} the new type implements, and an \emph{init}
+function, as described above.
+
+Type parameter \code{Self} in the \code{init} function of a derived type refers
+to the new type with name \emph{name}.
+
+A new type can be derived from any previously defined representable type. It is
+an error to define a new type that has the same name as an existing type. A new
+type cannot be derived from itself.
+
+Once constructed, derived types do not have any relationship with the type they
+are derived from.
+
+%--------------------------------------------------------------------------------------------------
+\subsection{Expressions}
+\label{sec:expressions}
+
+Expressions are split into two classes:
+tree (\code{MethodInvocation}, \code{FunctionInvocation}, \code{FieldAccess},
+      \code{ContextAccess}, and \code{IfElse})
+and
+leaf (\code{This}, and \code{Constant}).
+
+Expressions MUST evaluate to a result that is of a previously defined type.
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Tree Expressions}
+
+A \code{MethodInvocation} expression is parameterised by a \emph{target} expression, a
+\emph{method name}, and list of \emph{arguments} for that method. The expression evaluates
+to the result of calling the named method, with \code{self} set to the \emph{target}
+expression and the other arguments set as specified. Arguments are specified as expressions.
+
+A \code{FunctionInvocation} expression is parameterised by a \emph{function name} and a list of
+\emph{arguments}, specified as expressions. The expression evaluates to the result of
+calling the named function with the arguments specified. The \emph{name} MUST refer to
+a previously defined \code{Function}. The set
+of arguments MUST contain values for all of the parameters specified
+in the \code{Function} definition, and the \code{value} expression for each
+MUST evaluate to a value matching the type of the parameter as specified in
+the \code{Function} definition.
+
+A \code{FieldAccess} expression is parameterised by a \emph{target} expression, and a
+\emph{field name}. The \emph{target} expression MUST resolve to a structure type. A
+\code{FieldAccess} expression resolves to the type of the \emph{field name} within the
+\emph{target} structure.
+
+A \code{ContextAccess} expression is parameterised by a \emph{field name}. The expression
+resolves to the type of the \emph{field name} within the protocol's context.
+It is an error to evaluate a \code{ContextAccess} expression on a protocol
+that protocol does not contain a \code{Context} instance.
+
+A \code{IfElse} expression is parameterised by three expressions: a \emph{condition},
+an \emph{if true} expression and an \emph{if false} expression. The expression resolves
+to the \code{Boolean} type. It resolves to the true expression if the condition
+expression evaluates to True, otherwise, it evaluates to the false expression.
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\subsubsection{Leaf Expressions}
+
+Expressions are always evaluated in the context of a containing type.
+A \code{This} expression resolves to that containing type.
+
+A \code{Constant} expression is parameterised by a \emph{type name} and a \emph{value}.
+The expression evaluates to the specified value, whose type is specified.
+
+%==================================================================================================
+\section{Parser Model}
+\label{sec:parser-model}
+
+The goal of the intermediate representation described in this document is to
+allow for the unambiguous description of the parsing and serialisation of
+binary protocols, from which code that supports these processes can be
+generated. However, the intermediate representation limits the constraints it
+places on the design and architecture of generated code. This allows
+code generation backends to produce code that is idiomatic within the target
+language or that fulfils other non-functional properties (such as readability or
+performance).
+
+\begin{figure}
+\begin{lstlisting}[language=Python]
+new_type = Nothing()
+
+# try to parse as each listed PDU type in turn
+for pdu in protocol.PDUs:
+  from_type = type(pdu.init.from)
+
+  # build chain of constructors that begins with DataUnit
+  init_chain = []
+  while from_type != DataUnit:
+    init_chain.append(from_type)
+    from_type = type(from_type.init.from)
+  input_chain.append(pdu)
+
+  # call constructors in sequence
+  new_type = input.copy()
+  for init_type in init_chain:
+    new_type = init_type.init(new_type)
+    if type(new_type) is Nothing:
+      continue # try next PDU type if an initialiser returns Nothing
+  return new_type
+\end{lstlisting}
+\caption{Pseudocode for parsing process}
+\label{fig:parsing-pseudocode}
+\end{figure}
+
+Figure~\ref{fig:parsing-pseudocode} gives pseudocode for the parsing process, as
+captured by the intermediary language. Parsing begins with an incoming PDU
+(\code{input}). Within the model described by the intermediate representation,
+this PDU originates as a \code{DataUnit}. From this \code{DataUnit}, the
+parser should then attempt to construct the first PDU type as listed within the
+\code{Protocol}. This begins by building the chain of constructors from the
+\code{DataUnit} to the PDU type. This chain of constructors is then called in
+sequence, until either parsing fails (because a constructor returns
+\code{Nothing}) or the PDU type is constructed successfully. If parsing fails,
+then the construction of the next PDU type is attempted. This continues until
+the list of PDU types is exhausted (in which case the incoming data cannot be
+parsed) or a PDU type is successfully constructed.
+
+The intermediary representation does not specify how the generated code should
+represent the types described, or their traits and methods. It is only required
+that the logical consistency of the intermediary representation's type system
+is maintained. For example, the particular representation of our language's
+\code{Number} type is not specified; It remains that this type must be
+represented in a way that supports the traits and methods that apply to the
+\code{Number} type.
+
+%--------------------------------------------------------------------------------------------------
+\subsection{Type size inference}
+\label{sec:runtime-size-inference}
+
+The constructors for representable types allow for the size of the constructed
+types to be unspecified. However, the runtime MUST be able to infer an
+expression for the size of all representable types once all types have been
+constructed.
+
+The runtime performs a size inference process, starting with each type specified
+as a PDU in the \code{Protocol}'s \emph{PDUs} list. Size inference is a
+recursive process. We begin by defining the \emph{container size}: that is, the
+size of the outer type. This is initially set to \code{data\_size}.
+
+The runtime infers a size for each type as follows:
+\begin{description}
+  \item[BitString]
+    The size of a \code{BitString} type is set to the \emph{container size}.
+  \item[Option]
+    The size of an \code{Option} type is as defined in
+    Section~\ref{sec:option-type}.
+
+    The size inference process continues by inferring the size of the
+    \code{Option}'s \emph{reference type}, where the \emph{container size} is
+    unchanged.
+  \item[Array]
+    The size of the array's \emph{element type} is inferred first. Then, the
+    array's length can be inferred as \emph{container size} divided by the size
+    of each element. Finally, the size of the array is set to
+    \emph{container size}.
+  \item[Structure]
+    A structure can contain at most one field whose type has a size that is
+    unspecified, and that must be infered by the runtime. The size of that
+    field is infered by the runtime, with \emph{container size} set to its
+    existing size less the sum of the sizes of all of the other fields.
+  \item[Enumerated]
+    The size of an \code{Enum} type is as defined in
+    Section~\ref{sec:enum-type}.
+
+    The size inference process continues by inferring the size of each of the
+    \code{Enum}'s \emph{variants}, where the \emph{container size} is unchanged.
+\end{description}
+
+%==================================================================================================
+\section{Outstanding issues}
+
+The language specification does not yet consider:
+\begin{itemize}
+  \item The role of the \code{init} function for \code{Enum} types.
+  \item The ways in which the size inference process can fail.
+  \item How the size inference process interacts with constraints.
+\end{itemize}
+
+%==================================================================================================
+\section{Acknowledgements}
+
+This work was supported by the Engineering and Physical Sciences Research
+Council (grant EP/R04144X/1).
+
+%==================================================================================================
+\bibliographystyle{abbrv}
+\bibliography{ir}
+%==================================================================================================
+% The following information gets written into the PDF file information:
+\ifpdf
+  \pdfinfo{
+    /Title        (The Glasgow Packet Language: Intermediate Representation and Execution Model)
+    /Author       (Stephen McQuistin and Colin Perkins)
+    /Subject      (The Glasgow Packet Language)
+    /Keywords     (Parsing, Network Protocols, Packet Formats)
+    /CreationDate (D:20180727162600Z)
+    /ModDate      (D:20180727162600Z)
+    /Creator      (LaTeX)
+    /Producer     (pdfTeX)
+  }
+  % Suppress unnecessary metadata, to ensure the PDF generated by pdflatex is
+  % identical each time it is built:
+  \ifdefined\pdftrailerid
+    % The \pdftrailerid and \pdfsuppressptexinfo macros were both introduced
+    % in pdfTeX 3.14159265-2.6-1.40.17. If one is present, the other will be.
+    \pdftrailerid{}
+    \pdfsuppressptexinfo=15
+  \fi
+\fi
+%==================================================================================================
+\end{document}
+% vim: set ts=2 sw=2 tw=75 et ai:
