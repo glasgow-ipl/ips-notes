@@ -49,7 +49,8 @@ PDF_FILES = notes/improving-protocol-standards.pdf \
             notes/ir.pdf \
             notes/parser-generator-reqs.pdf \
             notes/discussion-questions.pdf \
-            notes/ietf103-notes.pdf
+            notes/ietf103-notes.pdf \
+			notes/ips-techreport.pdf
 
 # The TXT files to build, each should have a corresponding RFCv3 XML file:
 TXT_FILES =

@@ -1,0 +1,169 @@
+\documentclass[10pt,twocolumn,a4paper]{article}
+\usepackage[l2tabu,orthodox]{nag}
+\usepackage[utf8x]{inputenc}
+\usepackage[british]{babel}
+\usepackage[babel=true]{microtype}
+\usepackage{amsmath}
+\usepackage[all]{onlyamsmath}
+\usepackage{newtxtext}
+\usepackage{newtxmath}
+\usepackage{upquote}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage[caption=false]{subfig}
+\usepackage{booktabs}
+\usepackage{bytefield}
+\usepackage{listings}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{color}
+\usepackage{fullpage}
+\usepackage{no-par-indent}
+\usepackage{alltt}
+\frenchspacing
+\newcommand{\todo}[1]{\textit{\textcolor{red}{[To do: #1]}}}
+\newcommand{\code}[1]{\texttt{#1}}
+%==================================================================================================
+\begin{document}
+\title{Improving Protocol Standards for a more Trustworthy Internet}
+\author{}
+\date{\today}
+\maketitle
+%==================================================================================================
+\begin{abstract}
+
+abstract
+
+\end{abstract}
+
+%==================================================================================================
+\section{Introduction}
+
+%==================================================================================================
+\section{Motivation}
+\label{sec:motivation}
+
+Our motivation is that the current way that standards are written (i.e.,
+mostly in prose and manually drawn diagrams) leads to documents that are
+ambiguous and unclear, that this leads to implementations that are incorrect
+or inconsistent with the specification. We're also asserting that enabling
+machine-readability and automatic code generation from parser documents would
+help to overcome some of these issues.
+
+Ambiguous documents: give examples where documents contain errors (e.g.,
+mismatches between diagrams and text, text and code in the appendix, ..).
+
+Inconsistent implementations: examples of implementations that, written to the
+standard, have not worked as intended.
+
+%==================================================================================================
+\section{Protocol Standards}
+\label{sec:standards}
+
+Describe the syntactic and semantic elements of protocols that need to be
+captured to allow for parser code generation. Start with the basic, most
+common elements, and work towards more complex elements.
+
+%==================================================================================================
+\section{Related Work}
+\label{sec:related}
+
+We can now walk through the related work, from the perspective of the protocols
+(described in the previous section) that each language can/cannot represent.
+For example, most/all syntax description languages can represent UDP. Work from
+this through to something like QUIC, which can't be represented easily.
+
+At the end of this section, the need for our solution should be clear:
+Section~\ref{sec:motivation} has shown that machine-readability is needed to
+improve the trustworthiness of standards, Section~\ref{sec:standards} has shown
+which elements need to be captured, and this Section has shown that existing
+approaches aren't sufficient.
+
+%==================================================================================================
+\section{The Network Packet Representation}
+
+Section~\ref{sec:related} shows -- with a wide variety of description formats --
+the need to have an architecture that decouples the protocol description
+language from the parser generators.
+
+Describe the architecture that supports this.
+
+Focus of this section is the type system: forward references to sections
+describing how input languages and parser generators fit in.
+
+Highlight the tree structure: types can be constructed in terms of other types.
+
+\subsection{Internal types}
+\subsection{Representable types}
+
+%==================================================================================================
+\section{Protocol Description Languages}
+
+Highlight that our architecture allows for the use of multiple description
+languages.
+
+Start with a trivial language that follows directly for the Network Packet
+Representation (NPR). Focus on how this can be parsed into the NPR.
+
+Describe the Augmented Packet Header Diagram format. Find some way to show how
+closely it follows the format currently in use.
+
+Indicate that other existing languages could similarly be adapted to generate
+an NPR description.
+
+Throughout, highlight the tree structure: the need to specify leaf types before
+the types that contain them has implications for description languages.
+
+%==================================================================================================
+\section{Parser Generation}
+
+Describe how the tree structure of the NPR aligns well with the parser
+combinator paradigm, and highlight that the benefits of this architecture.
+
+Work through Rust parser generation.
+
+Discuss performance, and give benchmarking results.
+
+%==================================================================================================
+\section{Safety and Decidability}
+
+What is the impact of the Network Packet Representation on
+safety/computability/decidability?
+
+%==================================================================================================
+\section{Conclusions}
+
+%==================================================================================================
+\section{Acknowledgements}
+
+This work was supported by the Engineering and Physical Sciences Research
+Council (grant EP/R04144X/1).
+
+%==================================================================================================
+\bibliographystyle{abbrv}
+\bibliography{ir}
+%==================================================================================================
+% The following information gets written into the PDF file information:
+\ifpdf
+  \pdfinfo{
+    /Title        (The Network Representation Language: Parser Generator Requirements)
+    /Author       (Stephen McQuistin and Colin Perkins)
+    /Subject      (The Network Representation Language)
+    /Keywords     (Parsing, Network Protocols, Packet Formats)
+    /CreationDate (D:20180727162600Z)
+    /ModDate      (D:20180727162600Z)
+    /Creator      (LaTeX)
+    /Producer     (pdfTeX)
+  }
+  % Suppress unnecessary metadata, to ensure the PDF generated by pdflatex is
+  % identical each time it is built:
+  \ifdefined\pdftrailerid
+    % The \pdftrailerid and \pdfsuppressptexinfo macros were both introduced
+    % in pdfTeX 3.14159265-2.6-1.40.17. If one is present, the other will be.
+    \pdftrailerid{}
+    \pdfsuppressptexinfo=15
+  \fi
+\fi
+%==================================================================================================
+\end{document}
+% vim: set ts=2 sw=2 tw=75 et ai:
